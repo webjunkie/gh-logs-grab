@@ -1,6 +1,6 @@
 ---
 name: gh-logs
-description: Download and analyze GitHub Actions CI logs. Use when user shares a run URL or asks about CI failures.
+description: Download and analyze GitHub Actions CI logs. Use when user shares a run URL, asks about CI failures, or when you would otherwise use `gh run download` or `gh run view`.
 ---
 
 # GitHub Actions Log Grabber
@@ -13,6 +13,7 @@ Use the `gh-logs-grab` CLI tool to download CI logs from GitHub Actions and anal
 - User asks about CI failures, test failures, or flaky tests
 - User wants to compare errors across multiple CI runs
 - User asks about job timing/performance in CI
+- **Instead of** `gh run download` or `gh run view --log` — this tool downloads, organizes, and auto-analyzes in one step
 
 ## Commands
 
@@ -33,7 +34,7 @@ Downloads logs from a GitHub Actions run. By default, only failed jobs are downl
 ```
 logs/pr-{number}/{run-id}/
 ├── metadata.json
-├── findings.json          # Auto-generated pytest analysis
+├── findings.json          # Auto-generated test error analysis
 ├── job-name-failure.log
 └── ...
 ```
