@@ -6,12 +6,23 @@ use std::collections::HashMap;
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct Step {
+    pub name: String,
+    pub conclusion: Option<String>,
+    pub number: u64,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct Job {
     pub id: u64,
     pub name: String,
     pub conclusion: Option<String>,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+    #[serde(default)]
+    pub steps: Vec<Step>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -61,8 +72,31 @@ pub struct ErrorOccurrence {
 pub struct Findings {
     pub analyzed_at: String,
     pub run_id: String,
+    #[serde(default)]
+    pub jobs_overview: Vec<JobOverview>,
     pub errors: Vec<TestError>,
     pub summary: FindingsSummary,
+}
+
+// ---------------------------------------------------------------------------
+// Jobs/steps overview
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct JobOverview {
+    pub job_name: String,
+    pub conclusion: String,
+    pub duration_secs: Option<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_steps: Vec<FailedStepOverview>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FailedStepOverview {
+    pub name: String,
+    pub conclusion: String,
+    pub number: u64,
+    pub duration_secs: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize)]

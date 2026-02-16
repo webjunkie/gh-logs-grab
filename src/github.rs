@@ -111,8 +111,6 @@ pub async fn fetch_jobs(
         owner, repo, run_id
     );
 
-    println!("Fetching jobs for run {}...", run_id);
-
     let mut all_jobs = Vec::new();
     let mut page = 1;
 
@@ -138,7 +136,6 @@ pub async fn fetch_jobs(
         page += 1;
     }
 
-    println!("Found {} jobs", all_jobs.len());
     Ok(all_jobs)
 }
 
@@ -161,16 +158,8 @@ pub async fn download_job_logs(
     let filepath = job_output_dir.join(filename);
 
     if filepath.exists() {
-        let metadata = fs::metadata(&filepath).await?;
-        println!(
-            "Downloading: {} ... SKIP (exists, {} bytes)",
-            job.name,
-            metadata.len()
-        );
         return Ok(());
     }
-
-    print!("Downloading: {} ... ", job.name);
 
     let url = format!(
         "https://api.github.com/repos/{}/{}/actions/jobs/{}/logs",
@@ -180,20 +169,16 @@ pub async fn download_job_logs(
     let resp = client.get(&url).send().await?;
 
     if !resp.status().is_success() {
-        println!("SKIP (no logs)");
         return Ok(());
     }
 
     let content = resp.bytes().await?;
-    let size = content.len();
 
     if let Some(parent) = filepath.parent() {
         fs::create_dir_all(parent).await?;
     }
 
     fs::write(&filepath, content).await?;
-
-    println!("OK ({} bytes)", size);
 
     Ok(())
 }

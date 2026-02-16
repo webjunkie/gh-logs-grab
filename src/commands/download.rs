@@ -19,7 +19,6 @@ pub async fn download_command(
     };
 
     let (owner, repo, run_id) = github::parse_run_url(&run_url)?;
-    println!("Owner: {}, Repo: {}, Run ID: {}", owner, repo, run_id);
 
     let headers = github::build_headers(&token);
     let client = reqwest::Client::builder()
@@ -38,7 +37,6 @@ pub async fn download_command(
 
     let run_output_dir = base_dir.join(&run_id);
     fs::create_dir_all(&run_output_dir).await?;
-    println!("Output directory: {}", run_output_dir.display());
 
     let jobs = github::fetch_jobs(&client, &owner, &repo, &run_id).await?;
     let total_jobs = jobs.len();
@@ -48,17 +46,14 @@ pub async fn download_command(
         jobs_to_download.retain(|job| {
             job.conclusion.as_deref() != Some("success") && job.conclusion.is_some()
         });
-        println!("Filtered to {} failed jobs", jobs_to_download.len());
     }
 
     let failed_jobs_count = jobs_to_download.len();
 
     if jobs_to_download.is_empty() {
-        println!("No jobs to download!");
+        println!("No failed jobs to download.");
         return Ok(());
     }
-
-    println!("\nDownloading logs in parallel...\n");
 
     let download_tasks: Vec<_> = jobs_to_download
         .iter()
@@ -67,17 +62,20 @@ pub async fn download_command(
 
     let results = join_all(download_tasks).await;
 
-    let mut failed = 0;
-    for result in results {
-        if result.is_err() {
-            failed += 1;
-        }
-    }
+    let failed = results.iter().filter(|r| r.is_err()).count();
 
-    println!("\n✓ Downloaded {} logs", jobs_to_download.len() - failed);
-    if failed > 0 {
-        println!("✗ Failed: {}", failed);
-    }
+    println!(
+        "Downloaded {} logs for run {} ({}/{} repo){}\n",
+        jobs_to_download.len() - failed,
+        run_id,
+        owner,
+        repo,
+        if failed > 0 {
+            format!(" ({} failed)", failed)
+        } else {
+            String::new()
+        }
+    );
 
     let metadata = RunMetadata {
         run_id: run_id.clone(),
@@ -97,9 +95,7 @@ pub async fn download_command(
     let metadata_path = run_output_dir.join("metadata.json");
     let metadata_json = serde_json::to_string_pretty(&metadata)?;
     fs::write(&metadata_path, metadata_json).await?;
-    println!("✓ Wrote metadata to {}", metadata_path.display());
 
-    println!("\n→ Analyzing downloaded logs...");
     if let Err(e) = analyze_command(run_output_dir).await {
         eprintln!("Warning: Failed to analyze logs: {}", e);
     }

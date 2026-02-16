@@ -23,21 +23,14 @@ Use the `gh-logs-grab` CLI tool to download CI logs from GitHub Actions and anal
 gh-logs-grab download <RUN_URL> [OPTIONS]
 ```
 
-Downloads logs from a GitHub Actions run. By default, only failed jobs are downloaded.
+Downloads logs from a GitHub Actions run. By default, only failed jobs are downloaded. Auto-runs `analyze` afterwards.
 
 **Options:**
 - `-o, --output <PATH>`: Output directory (default: `./logs`)
 - `-a, --all`: Include successful jobs too
 - `-t, --token <TOKEN>`: GitHub token (auto-detects from `GITHUB_TOKEN` env or `gh auth token`)
 
-**Output structure:**
-```
-logs/pr-{number}/{run-id}/
-├── metadata.json
-├── findings.json          # Auto-generated test error analysis
-├── job-name-failure.log
-└── ...
-```
+**Output:** `logs/pr-{number}/{run-id}/` with `metadata.json`, `findings.json`, and `.log` files.
 
 ### Analyze Single Run
 
@@ -45,9 +38,7 @@ logs/pr-{number}/{run-id}/
 gh-logs-grab analyze <RUN_DIR>
 ```
 
-Extracts test errors from logs (pytest, Jest/Storybook). Creates `findings.json` with deduplicated errors and per-framework breakdown.
-
-Note: `download` runs this automatically.
+Re-runs analysis on already-downloaded logs. Normally not needed — `download` does this automatically.
 
 ### Timeline Analysis
 
@@ -55,11 +46,7 @@ Note: `download` runs this automatically.
 gh-logs-grab timeline <PR_DIR>
 ```
 
-Compares errors across multiple runs in a PR directory. Creates `analysis.json` with:
-- **Regressed**: New errors introduced
-- **Persistent**: Present in all runs
-- **Intermittent**: Flaky tests
-- **Fixed**: Errors that disappeared
+Compares errors across multiple runs in a PR directory. Creates `analysis.json`.
 
 ### Job Timings
 
@@ -67,7 +54,14 @@ Compares errors across multiple runs in a PR directory. Creates `analysis.json` 
 gh-logs-grab timings <PR_DIR>
 ```
 
-Analyzes job duration across runs. Creates `timings.json` and shows top 5 slowest jobs.
+Analyzes job duration across runs. Creates `timings.json`.
+
+## Output Files
+
+- `findings.json`: `jobs_overview` (all jobs with conclusions + failed steps), `errors` (parsed test failures with tracebacks), `summary` (counts by framework)
+- `analysis.json`: `error_timeline` with status per error: `regressed` / `persistent` / `intermittent` / `fixed`, plus culprit/fix commit hints
+- `timings.json`: per-job duration stats (avg/min/max) across runs
+- `metadata.json`: run metadata, job list with steps, timestamps, PR info
 
 ## Typical Workflow
 

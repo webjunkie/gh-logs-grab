@@ -41,8 +41,6 @@ struct ErrorTimeline {
 }
 
 pub async fn timeline_command(pr_dir: PathBuf) -> Result<()> {
-    println!("Generating timeline for {}...", pr_dir.display());
-
     let mut run_dirs = Vec::new();
     let mut entries = fs::read_dir(&pr_dir).await?;
     while let Some(entry) = entries.next_entry().await? {
@@ -65,7 +63,7 @@ pub async fn timeline_command(pr_dir: PathBuf) -> Result<()> {
     }
     runs_with_metadata.sort_by_key(|(_, meta)| meta.run_number);
 
-    println!("Found {} runs", runs_with_metadata.len());
+    let num_runs = runs_with_metadata.len();
 
     let mut error_tracker: HashMap<String, (ErrorTimeline, String)> = HashMap::new();
     let mut run_summaries = Vec::new();
@@ -192,33 +190,16 @@ pub async fn timeline_command(pr_dir: PathBuf) -> Result<()> {
     let timeline_json = serde_json::to_string_pretty(&timeline)?;
     fs::write(&timeline_path, timeline_json).await?;
 
-    println!("\n✓ Timeline analysis:");
-    let regressed = timeline
-        .error_timeline
-        .iter()
-        .filter(|e| e.status == "regressed")
-        .count();
-    let persistent = timeline
-        .error_timeline
-        .iter()
-        .filter(|e| e.status == "persistent")
-        .count();
-    let fixed = timeline
-        .error_timeline
-        .iter()
-        .filter(|e| e.status == "fixed")
-        .count();
-    let intermittent = timeline
-        .error_timeline
-        .iter()
-        .filter(|e| e.status == "intermittent")
-        .count();
+    let regressed = timeline.error_timeline.iter().filter(|e| e.status == "regressed").count();
+    let persistent = timeline.error_timeline.iter().filter(|e| e.status == "persistent").count();
+    let fixed = timeline.error_timeline.iter().filter(|e| e.status == "fixed").count();
+    let intermittent = timeline.error_timeline.iter().filter(|e| e.status == "intermittent").count();
 
-    println!("  Regressed:    {} errors", regressed);
-    println!("  Persistent:   {} errors", persistent);
-    println!("  Intermittent: {} errors", intermittent);
-    println!("  Fixed:        {} errors", fixed);
-    println!("\n✓ Wrote timeline to {}", timeline_path.display());
+    println!(
+        "Timeline ({} runs): {} regressed, {} persistent, {} intermittent, {} fixed",
+        num_runs, regressed, persistent, intermittent, fixed
+    );
+    println!("Timeline: {}", timeline_path.display());
 
     Ok(())
 }

@@ -4,13 +4,132 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
 
-use crate::models::{Findings, FindingsSummary, FrameworkSummary, RunMetadata, TestError};
+use crate::models::{
+    FailedStepOverview, Findings, FindingsSummary, FrameworkSummary, JobOverview, RunMetadata,
+    TestError,
+};
 use crate::parsers::all_parsers;
 use super::timeline_command;
 
-pub async fn analyze_command(run_dir: PathBuf) -> Result<()> {
-    println!("Analyzing logs in {}...", run_dir.display());
+fn compute_duration(started_at: &Option<String>, completed_at: &Option<String>) -> Option<i64> {
+    let start = chrono::DateTime::parse_from_rfc3339(started_at.as_deref()?).ok()?;
+    let end = chrono::DateTime::parse_from_rfc3339(completed_at.as_deref()?).ok()?;
+    Some((end.timestamp() - start.timestamp()).abs())
+}
 
+fn conclusion_sort_key(conclusion: &str) -> u8 {
+    match conclusion {
+        "failure" => 0,
+        "cancelled" => 1,
+        "timed_out" => 2,
+        "success" => 3,
+        "skipped" => 4,
+        _ => 5,
+    }
+}
+
+fn build_jobs_overview(metadata: &RunMetadata) -> Vec<JobOverview> {
+    let mut overview: Vec<JobOverview> = metadata
+        .jobs
+        .iter()
+        .map(|job| {
+            let conclusion = job.conclusion.as_deref().unwrap_or("unknown").to_string();
+            let duration_secs = compute_duration(&job.started_at, &job.completed_at);
+
+            let failed_steps = if conclusion != "success" && conclusion != "skipped" {
+                job.steps
+                    .iter()
+                    .filter(|s| {
+                        let sc = s.conclusion.as_deref().unwrap_or("unknown");
+                        sc != "success" && sc != "skipped"
+                    })
+                    .map(|s| FailedStepOverview {
+                        name: s.name.clone(),
+                        conclusion: s.conclusion.as_deref().unwrap_or("unknown").to_string(),
+                        number: s.number,
+                        duration_secs: compute_duration(&s.started_at, &s.completed_at),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            JobOverview {
+                job_name: job.name.clone(),
+                conclusion,
+                duration_secs,
+                failed_steps,
+            }
+        })
+        .collect();
+
+    overview.sort_by(|a, b| {
+        conclusion_sort_key(&a.conclusion)
+            .cmp(&conclusion_sort_key(&b.conclusion))
+            .then_with(|| a.job_name.cmp(&b.job_name))
+    });
+
+    overview
+}
+
+fn print_jobs_overview(overview: &[JobOverview], total_jobs: usize) {
+    let failed = overview
+        .iter()
+        .filter(|j| j.conclusion == "failure")
+        .count();
+    let cancelled = overview
+        .iter()
+        .filter(|j| j.conclusion == "cancelled")
+        .count();
+    let passed = overview
+        .iter()
+        .filter(|j| j.conclusion == "success")
+        .count();
+
+    let mut parts = Vec::new();
+    if failed > 0 {
+        parts.push(format!("{} failed", failed));
+    }
+    if cancelled > 0 {
+        parts.push(format!("{} cancelled", cancelled));
+    }
+    if passed > 0 {
+        parts.push(format!("{} passed", passed));
+    }
+    let other = total_jobs - failed - cancelled - passed;
+    if other > 0 {
+        parts.push(format!("{} other", other));
+    }
+
+    println!("\nJobs overview ({} total, {}):", total_jobs, parts.join(", "));
+
+    for job in overview {
+        if job.conclusion == "success" || job.conclusion == "skipped" {
+            continue;
+        }
+        let duration = job
+            .duration_secs
+            .map(|d| format!(", {}s", d))
+            .unwrap_or_default();
+        println!("  ✗ {} [{}{}]", job.job_name, job.conclusion, duration);
+        for step in &job.failed_steps {
+            let sdur = step
+                .duration_secs
+                .map(|d| format!(", {}s", d))
+                .unwrap_or_default();
+            println!(
+                "    → Step {}: {} [{}{}]",
+                step.number, step.name, step.conclusion, sdur
+            );
+        }
+    }
+
+    if passed > 0 {
+        println!("  ✓ {} jobs passed", passed);
+    }
+}
+
+pub async fn analyze_command(run_dir: PathBuf) -> Result<()> {
     let findings_path = run_dir.join("findings.json");
     let metadata_path = run_dir.join("metadata.json");
 
@@ -44,12 +163,9 @@ pub async fn analyze_command(run_dir: PathBuf) -> Result<()> {
         }
 
         if all_logs_older {
-            println!("✓ Findings up to date (newer than all log files)");
             return Ok(());
         }
     }
-
-    println!("Parsing log files...");
 
     let mut log_files = Vec::new();
     let mut entries = fs::read_dir(&run_dir).await?;
@@ -83,8 +199,6 @@ pub async fn analyze_command(run_dir: PathBuf) -> Result<()> {
             for parser in &parsers {
                 file_errors.extend(parser.parse(&content, &job_name, &filename));
             }
-
-            println!("  {} → {} errors", filename, file_errors.len());
 
             (filename, file_errors)
         })
@@ -124,9 +238,15 @@ pub async fn analyze_command(run_dir: PathBuf) -> Result<()> {
         entry.total_occurrences += error.occurrences.len();
     }
 
+    // Build jobs/steps overview from metadata
+    let jobs_overview = build_jobs_overview(&metadata);
+    let total_jobs = metadata.total_jobs;
+    let pr_number = metadata.pr_number;
+
     let findings = Findings {
         analyzed_at: chrono::Utc::now().to_rfc3339(),
         run_id: metadata.run_id,
+        jobs_overview: jobs_overview.clone(),
         errors: errors.clone(),
         summary: FindingsSummary {
             total_unique_errors: errors.len(),
@@ -139,26 +259,31 @@ pub async fn analyze_command(run_dir: PathBuf) -> Result<()> {
     let findings_json = serde_json::to_string_pretty(&findings)?;
     fs::write(&findings_path, findings_json).await?;
 
-    println!(
-        "\n✓ Found {} unique errors ({} total occurrences)",
-        errors.len(),
-        total_occurrences
-    );
+    // Print jobs overview
+    print_jobs_overview(&jobs_overview, total_jobs);
 
-    // Print per-framework breakdown
-    for (fw, summary) in &by_framework {
+    // Print per-framework error summary
+    if errors.is_empty() {
+        println!("\nNo parsed test errors found.");
+    } else {
+        let fw_parts: Vec<String> = by_framework
+            .iter()
+            .map(|(fw, s)| format!("{}: {} unique, {} total", fw, s.unique_errors, s.total_occurrences))
+            .collect();
         println!(
-            "  {} → {} unique, {} occurrences",
-            fw, summary.unique_errors, summary.total_occurrences
+            "\nTest errors: {} unique ({} occurrences) [{}]",
+            errors.len(),
+            total_occurrences,
+            fw_parts.join("; ")
         );
     }
 
-    println!("✓ Wrote findings to {}", findings_path.display());
+    println!("Findings: {}", findings_path.display());
 
     // Auto-generate timeline for the PR
-    if let Some(pr_num) = metadata.pr_number {
+    if pr_number.is_some() {
         let pr_dir = run_dir.parent().unwrap();
-        println!("\n→ Generating timeline for PR {}...", pr_num);
+        println!();
         if let Err(e) = timeline_command(pr_dir.to_path_buf()).await {
             eprintln!("Warning: Failed to generate timeline: {}", e);
         }

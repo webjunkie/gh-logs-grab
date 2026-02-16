@@ -32,8 +32,6 @@ struct TimingsReport {
 }
 
 pub async fn timings_command(pr_dir: PathBuf) -> Result<()> {
-    println!("Generating timings for {}...", pr_dir.display());
-
     let mut run_dirs = Vec::new();
     let mut entries = fs::read_dir(&pr_dir).await?;
     while let Some(entry) = entries.next_entry().await? {
@@ -54,8 +52,6 @@ pub async fn timings_command(pr_dir: PathBuf) -> Result<()> {
         metadata_list.push((dir, metadata));
     }
     metadata_list.sort_by_key(|(_, m)| m.run_number);
-
-    println!("Found {} runs\n", metadata_list.len());
 
     let mut job_timings: HashMap<String, BTreeMap<String, JobTiming>> = HashMap::new();
 
@@ -132,12 +128,11 @@ pub async fn timings_command(pr_dir: PathBuf) -> Result<()> {
     let report_json = serde_json::to_string_pretty(&report)?;
     fs::write(&timings_path, report_json).await?;
 
-    println!("✓ Wrote timings to {}", timings_path.display());
-    println!("\nTop 5 slowest jobs (by average):");
+    println!("Top 5 slowest jobs (by avg, {} runs):", metadata_list.len());
     for (i, job) in report.jobs.iter().take(5).enumerate() {
         if let Some(avg) = job.avg_duration_secs {
             println!(
-                "  {}. {} - avg: {:.0}s (min: {}s, max: {}s)",
+                "  {}. {} — avg {:.0}s (min {}s, max {}s)",
                 i + 1,
                 job.job_name,
                 avg,
@@ -146,6 +141,7 @@ pub async fn timings_command(pr_dir: PathBuf) -> Result<()> {
             );
         }
     }
+    println!("Timings: {}", timings_path.display());
 
     Ok(())
 }
