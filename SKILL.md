@@ -5,7 +5,7 @@ description: Download and analyze GitHub Actions CI logs. Use when user shares a
 
 # GitHub Actions Log Grabber
 
-Use the `gh-logs-grab` CLI tool to download CI logs from GitHub Actions and analyze test failures (pytest, Jest, Storybook).
+Use the `gh-logs-grab` CLI tool to download CI logs from GitHub Actions and analyze test failures (pytest, Jest/Storybook, Rust/cargo test).
 
 ## When to Use
 
@@ -75,5 +75,6 @@ Analyzes job duration across runs. Creates `timings.json`.
 - Logs are stored in `./logs/` relative to current directory
 - Tool is idempotent - safe to re-run without re-downloading
 - GitHub token is auto-detected from environment or `gh` CLI
-- Supports pytest, Jest, and Storybook test runner output formats
+- Supports pytest, Jest/Storybook, and Rust (cargo test) output formats
 - Jest parser handles browser-prefixed output (e.g., Storybook visual regression tests)
+- Rust parser extracts panic messages, file paths, and filtered stack traces

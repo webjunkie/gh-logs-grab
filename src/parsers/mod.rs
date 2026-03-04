@@ -1,5 +1,6 @@
 mod jest;
 mod pytest;
+mod rust_test;
 
 use regex::Regex;
 use std::sync::LazyLock;
@@ -8,6 +9,7 @@ use crate::models::TestError;
 
 pub use jest::JestParser;
 pub use pytest::PytestParser;
+pub use rust_test::RustTestParser;
 
 // ---------------------------------------------------------------------------
 // Shared regexes
@@ -41,5 +43,9 @@ pub trait TestErrorParser: Send + Sync {
 }
 
 pub fn all_parsers() -> Vec<Box<dyn TestErrorParser>> {
-    vec![Box::new(PytestParser), Box::new(JestParser)]
+    vec![
+        Box::new(PytestParser),
+        Box::new(JestParser),
+        Box::new(RustTestParser),
+    ]
 }
