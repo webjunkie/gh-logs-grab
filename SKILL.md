@@ -5,7 +5,7 @@ description: Download and analyze GitHub Actions CI logs. Use when user shares a
 
 # GitHub Actions Log Grabber
 
-Use the `gh-logs-grab` CLI tool to download CI logs from GitHub Actions and analyze test failures (pytest, Jest/Storybook, Rust/cargo test).
+Use the `gh-logs-grab` CLI tool to download CI logs from GitHub Actions and analyze CI failures — both parsed test errors (pytest, Jest/Storybook, Rust) and workflow-level failures (build, lint, typecheck, infra).
 
 ## When to Use
 
@@ -58,7 +58,7 @@ Analyzes job duration across runs. Creates `timings.json`.
 
 ## Output Files
 
-- `findings.json`: `jobs_overview` (all jobs with conclusions + failed steps), `errors` (parsed test failures with tracebacks), `summary` (counts by framework)
+- `findings.json`: `jobs_overview` (all jobs with conclusions + failed steps), `errors` (parsed test errors + workflow step failures), `summary` (counts by framework: pytest/jest/rust/workflow)
 - `analysis.json`: `error_timeline` with status per error: `regressed` / `persistent` / `intermittent` / `fixed`, plus culprit/fix commit hints
 - `timings.json`: per-job duration stats (avg/min/max) across runs
 - `metadata.json`: run metadata, job list with steps, timestamps, PR info
@@ -75,6 +75,6 @@ Analyzes job duration across runs. Creates `timings.json`.
 - Logs are stored in `./logs/` relative to current directory
 - Tool is idempotent - safe to re-run without re-downloading
 - GitHub token is auto-detected from environment or `gh` CLI
-- Supports pytest, Jest/Storybook, and Rust (cargo test) output formats
-- Jest parser handles browser-prefixed output (e.g., Storybook visual regression tests)
-- Rust parser extracts panic messages, file paths, and filtered stack traces
+- Test parsers: pytest, Jest/Storybook (browser-prefixed), Rust/cargo test (panic + filtered stack traces)
+- Workflow errors: failed jobs/steps not covered by test parsers are tracked as framework "workflow" — covers build failures, lint, typecheck, infra issues
+- All error types flow through the same timeline tracking (regressed/persistent/intermittent/fixed)

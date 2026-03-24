@@ -4,9 +4,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
 
+use std::collections::HashSet;
+
 use crate::models::{
-    FailedStepOverview, Findings, FindingsSummary, FrameworkSummary, JobOverview, RunMetadata,
-    TestError,
+    ErrorOccurrence, FailedStepOverview, Findings, FindingsSummary, FrameworkSummary, JobOverview,
+    RunMetadata, TestError,
 };
 use crate::parsers::all_parsers;
 use super::timeline_command;
@@ -219,6 +221,79 @@ pub async fn analyze_command(run_dir: PathBuf) -> Result<()> {
                     e.occurrences.extend(error.occurrences.clone());
                 })
                 .or_insert(error);
+        }
+    }
+
+    // Generate workflow-level errors for failed jobs not covered by test parsers.
+    // Job names from parsers are derived from filenames (sanitized: _ → space, / : removed),
+    // so we normalize API job names the same way for comparison.
+    fn normalize_job_name(name: &str) -> String {
+        name.replace('/', "_")
+            .replace('\\', "_")
+            .replace(':', "_")
+            .replace('_', " ")
+    }
+
+    let jobs_with_test_errors: HashSet<String> = all_errors
+        .values()
+        .flat_map(|e| e.occurrences.iter().map(|o| normalize_job_name(&o.job)))
+        .collect();
+
+    for job in &metadata.jobs {
+        let conclusion = job.conclusion.as_deref().unwrap_or("unknown");
+        if conclusion == "success" || conclusion == "skipped" {
+            continue;
+        }
+
+        let job_name = job.name.clone();
+        if jobs_with_test_errors.contains(&normalize_job_name(&job_name)) {
+            continue;
+        }
+
+        // No test parser found errors for this job — create workflow errors from failed steps
+        let failed_steps: Vec<_> = job
+            .steps
+            .iter()
+            .filter(|s| {
+                let sc = s.conclusion.as_deref().unwrap_or("unknown");
+                sc != "success" && sc != "skipped"
+            })
+            .collect();
+
+        if failed_steps.is_empty() {
+            // No step info (old metadata) — create a single job-level error
+            let key = format!("workflow::{}::{}::{}", job_name, conclusion, "job_failure");
+            all_errors.entry(key).or_insert_with(|| TestError {
+                framework: "workflow".to_string(),
+                test_file: job_name.clone(),
+                test_name: "(job)".to_string(),
+                error_type: conclusion.to_string(),
+                message: String::new(),
+                line: None,
+                occurrences: vec![ErrorOccurrence {
+                    job: job_name.clone(),
+                    log_file: String::new(),
+                    traceback: None,
+                }],
+            });
+        } else {
+            for step in failed_steps {
+                let sc = step.conclusion.as_deref().unwrap_or("unknown");
+                let key = format!("workflow::{}::{}::{}", job_name, step.name, sc);
+                all_errors.entry(key).or_insert_with(|| TestError {
+                    framework: "workflow".to_string(),
+                    test_file: job_name.clone(),
+                    test_name: step.name.clone(),
+                    error_type: sc.to_string(),
+                    message: String::new(),
+                    line: None,
+                    occurrences: vec![ErrorOccurrence {
+                        job: job_name.clone(),
+                        log_file: String::new(),
+                        traceback: None,
+                    }],
+                });
+            }
         }
     }
 

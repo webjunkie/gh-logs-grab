@@ -50,32 +50,30 @@ pub async fn download_command(
 
     let failed_jobs_count = jobs_to_download.len();
 
-    if jobs_to_download.is_empty() {
-        println!("No failed jobs to download.");
-        return Ok(());
+    if !jobs_to_download.is_empty() {
+        let download_tasks: Vec<_> = jobs_to_download
+            .iter()
+            .map(|job| github::download_job_logs(&client, &owner, &repo, job, &run_output_dir))
+            .collect();
+
+        let results = join_all(download_tasks).await;
+        let failed = results.iter().filter(|r| r.is_err()).count();
+
+        println!(
+            "Downloaded {} logs for run {} ({}/{} repo){}\n",
+            jobs_to_download.len() - failed,
+            run_id,
+            owner,
+            repo,
+            if failed > 0 {
+                format!(" ({} failed)", failed)
+            } else {
+                String::new()
+            }
+        );
+    } else {
+        println!("No failed jobs for run {} ({}/{} repo)\n", run_id, owner, repo);
     }
-
-    let download_tasks: Vec<_> = jobs_to_download
-        .iter()
-        .map(|job| github::download_job_logs(&client, &owner, &repo, job, &run_output_dir))
-        .collect();
-
-    let results = join_all(download_tasks).await;
-
-    let failed = results.iter().filter(|r| r.is_err()).count();
-
-    println!(
-        "Downloaded {} logs for run {} ({}/{} repo){}\n",
-        jobs_to_download.len() - failed,
-        run_id,
-        owner,
-        repo,
-        if failed > 0 {
-            format!(" ({} failed)", failed)
-        } else {
-            String::new()
-        }
-    );
 
     let metadata = RunMetadata {
         run_id: run_id.clone(),

@@ -1,13 +1,13 @@
 # gh-logs-grab
 
-Fast GitHub Actions log downloader and test error analyzer. Supports pytest, Jest/Storybook, and Rust (cargo test) output formats.
+Fast GitHub Actions log downloader and CI failure analyzer. Parses test errors (pytest, Jest/Storybook, Rust) and tracks workflow-level failures (build, lint, typecheck, infra).
 
 ## Features
 
 - **Download**: Fetch failed job logs in parallel from GitHub Actions runs
-- **Analyze**: Extract test errors (pytest, Jest/Storybook, Rust) with file, line, and error details
+- **Analyze**: Extract test errors and workflow step failures with structured output
 - **Jobs overview**: See which jobs and steps failed at a glance
-- **Timeline**: Track error regressions and fixes across multiple runs
+- **Timeline**: Track regressions and fixes across multiple runs — test errors and workflow failures alike
 - **Timings**: Identify slowest jobs across runs
 - **Idempotent**: Safe to re-run, skips existing files
 
